@@ -427,7 +427,7 @@
 </header>
 
 <div class="station-tabs">
-  <button class="tab-btn all active" data-station="전체">전체 방송국</button>
+  <button class="tab-btn all" data-station="전체">전체 방송국</button>
   <button class="tab-btn" data-station="KBS">📡 KBS 여의도</button>
   <button class="tab-btn" data-station="상암">📡 상암 (MBC·YTN)</button>
   <button class="tab-btn" data-station="SBS">📡 SBS 목동</button>
@@ -441,7 +441,20 @@
 </div>
 
 <div class="main">
-  <div id="map"></div>
+  <div id="map">
+    <div style="
+      position:absolute;bottom:32px;left:10px;z-index:999;
+      background:rgba(13,18,32,0.85);border:1px solid #1e2d44;border-radius:6px;
+      padding:7px 10px;font-family:'Noto Sans KR',sans-serif;font-size:0.62rem;
+      color:#4a6080;line-height:2;backdrop-filter:blur(4px);
+    ">
+      <div style="color:#7a9ab0;font-weight:700;margin-bottom:2px;">🗓 개업 연식</div>
+      <div><span style="display:inline-block;width:28px;height:10px;background:rgba(136,85,255,0.45);border:1px solid rgba(200,160,255,0.7);border-radius:2px;margin-right:5px;vertical-align:middle;box-shadow:0 0 5px rgba(136,85,255,0.6);"></span>30년+</div>
+      <div><span style="display:inline-block;width:28px;height:10px;background:rgba(136,85,255,0.35);border:1px solid rgba(200,160,255,0.55);border-radius:2px;margin-right:5px;vertical-align:middle;"></span>20~29년</div>
+      <div><span style="display:inline-block;width:28px;height:10px;background:rgba(136,85,255,0.23);border:1px solid rgba(200,160,255,0.36);border-radius:2px;margin-right:5px;vertical-align:middle;"></span>10~19년</div>
+      <div><span style="display:inline-block;width:28px;height:10px;background:rgba(136,85,255,0.13);border:1px solid rgba(200,160,255,0.2);border-radius:2px;margin-right:5px;vertical-align:middle;"></span>10년 미만</div>
+    </div>
+  </div>
   <div class="sidebar">
     <div class="sidebar-top">
       <div class="stats-row">
@@ -10004,7 +10017,7 @@
   /* ── 상태 ── */
   let allData = SAMPLE_DATA;
   let filteredData = [];
-  let currentStation = '전체';
+  let currentStation = null; // 초기엔 미선택
   let currentFilters = new Set();
   let currentSort = 'dist';
   let markers = {};
@@ -10017,20 +10030,42 @@
   }).addTo(map);
 
   /* 방송국 거점 마커 */
+  /* 방송국 마커 — 민트 타워 */
   Object.entries(STATIONS).forEach(([key, s]) => {
+    const mint = '#00ffcc';
     const icon = L.divIcon({
       className: '',
-      html: `<div class="station-label" style="background:${s.color};border-color:${s.color};box-shadow:0 0 12px ${s.color}88;">${key}</div>`,
-      iconAnchor: [20, 10]
+      html: `
+        <div style="display:flex;flex-direction:column;align-items:center;gap:0;">
+          <div style="
+            background: rgba(0,255,204,0.15);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            color: ${mint};
+            font-family:'Gugi',sans-serif;
+            font-size:0.72rem;
+            font-weight:700;
+            padding:4px 10px;
+            border-radius:5px;
+            white-space:nowrap;
+            box-shadow: 0 0 16px ${mint}99, 0 0 32px ${mint}44, inset 0 1px 0 rgba(255,255,255,0.15);
+            border: 1px solid rgba(0,255,204,0.5);
+            letter-spacing:0.05em;
+          ">${s.name}</div>
+          <div style="width:2px;height:10px;background:${mint};box-shadow:0 0 6px ${mint};"></div>
+          <div style="width:8px;height:8px;background:${mint};border-radius:50%;box-shadow:0 0 10px ${mint}cc;"></div>
+        </div>`,
+      iconAnchor: [32, 46],
+      popupAnchor: [0, -46]
     });
     L.marker([s.lat, s.lng], { icon, zIndexOffset: 1000 })
-      .bindPopup(`<div style="font-family:'Noto Sans KR',sans-serif;color:#f0ece0;font-weight:700;font-size:0.9rem;">${s.name}</div>`)
+      .bindPopup(`<div style="font-family:'Noto Sans KR',sans-serif;color:#00ffcc;font-weight:700;font-size:0.9rem;">${s.name}</div>`)
       .addTo(map);
   });
 
   /* 거리 계산 (km) */
   function distToNearest(d) {
-    if (currentStation !== '전체') {
+    if (currentStation && currentStation !== '전체') {
       const s = STATIONS[currentStation];
       return haversine(d.lat, d.lng, s.lat, s.lng);
     }
@@ -10045,6 +10080,19 @@
 
   /* ── 필터/정렬 ── */
   function applyFilters() {
+    // 방송국 미선택 시 웰컴 화면
+    if (!currentStation) {
+      clearMarkers();
+      document.getElementById('restaurantList').innerHTML = `
+        <div class="empty-state">
+          <div class="icon">📡</div>
+          위의 방송국 탭을 선택하면<br>근처 찐맛집이 펼쳐져요!
+        </div>`;
+      document.getElementById('totalCount').textContent = '–';
+      document.getElementById('modelCount').textContent = '–';
+      document.getElementById('oldCount').textContent = '–';
+      return;
+    }
     const q = document.getElementById('searchInput').value.trim().toLowerCase();
     filteredData = allData.filter(d => {
       if (currentStation !== '전체' && !((currentStation === '상암' && (d.station === 'MBC' || d.station === 'YTN')) || d.station === currentStation)) return false;
@@ -10068,35 +10116,79 @@
   }
 
   /* ── 마커 ── */
-  function makeRestaurantIcon(d, rank) {
-    const both = d.isModel && d.isOld;
-    const color = both ? '#cc88ff' : d.isModel ? '#00ffcc' : d.isOld ? '#88aaff' : '#334466';
-    const size = rank <= 3 ? 28 : 22;
-    const emoji = both ? '⭐' : d.isModel ? '🏅' : d.isOld ? '⏳' : '🍽';
+  // 연식 기반: 바이올렛 단색 + 투명도 (오래될수록 진함)
+  function ageOpacity(since) {
+    const age = 2025 - since;
+    if (age >= 30) return 1;
+    if (age >= 20) return 0.78;
+    if (age >= 10) return 0.52;
+    return 0.28;
+  }
+
+  function makeRestaurantIcon(d) {
+    const op = ageOpacity(d.since);
+    const isSpecial = d.isModel && d.isOld;
+    const foodShort = (d.food || '').split('/').pop().slice(0, 4);
+
+    // 글래스모피즘: rgba 배경 + backdrop-filter blur + 반투명 테두리
+    const glassAlpha = Math.round(op * 0.55 * 255).toString(16).padStart(2, '0');
+    const borderAlpha = Math.round(op * 0.7 * 255).toString(16).padStart(2, '0');
+    const glowAlpha   = Math.round(op * 0.6 * 255).toString(16).padStart(2, '0');
+    const textAlpha   = Math.round(Math.max(op, 0.6) * 255).toString(16).padStart(2, '0');
+
     return L.divIcon({
       className: '',
-      html: `<div style="width:${size}px;height:${size}px;background:${color};border:2px solid #fff2;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 0 8px ${color}88;display:flex;align-items:center;justify-content:center;"><div style="transform:rotate(45deg);font-size:0.6rem;">${emoji}</div></div>`,
-      iconSize: [size, size], iconAnchor: [size/2, size], popupAnchor: [0, -size]
+      html: `<div style="
+          background: rgba(136,85,255,${(op * 0.45).toFixed(2)});
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
+          color: #fff${textAlpha};
+          font-family:'Noto Sans KR',sans-serif;
+          font-size: 0.54rem;
+          font-weight: 700;
+          padding: 2px 5px;
+          border-radius: 4px;
+          white-space: nowrap;
+          border: 1px solid rgba(200,160,255,${(op * 0.7).toFixed(2)});
+          box-shadow:
+            0 0 8px rgba(136,85,255,${(op * 0.6).toFixed(2)}),
+            inset 0 1px 0 rgba(255,255,255,${(op * 0.25).toFixed(2)});
+          max-width: 44px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          line-height: 1.5;
+          ${isSpecial ? 'outline: 1px solid rgba(255,255,255,0.5);' : ''}
+        ">${foodShort}</div>`,
+      iconSize: [46, 18],
+      iconAnchor: [23, 18],
+      popupAnchor: [0, -22]
     });
   }
 
-  function renderMarkers() {
+  function clearMarkers() {
     Object.values(markers).forEach(m => map.removeLayer(m));
     markers = {};
+  }
+
+  function renderMarkers() {
+    clearMarkers();
     filteredData.forEach((d, idx) => {
       const rank = idx + 1;
       const dist = distToNearest(d).toFixed(1);
       const since = 2025 - d.since;
+      const age2 = 2025 - d.since;
+      const op2 = age2 >= 30 ? 1 : age2 >= 20 ? 0.78 : age2 >= 10 ? 0.52 : 0.28;
+      const popStyle = `background:rgba(136,85,255,${(op2*0.3).toFixed(2)});color:rgba(200,160,255,${op2.toFixed(2)});border:1px solid rgba(136,85,255,${(op2*0.6).toFixed(2)});`;
       const badgeHtml = (d.isModel && d.isOld)
-        ? `<span class="popup-badge" style="background:#180a30;color:#cc88ff;border:1px solid #401880;">⭐ 모범 + ${since}년 노포</span>`
+        ? `<span class="popup-badge" style="${popStyle}">⭐ 모범 + ${since}년 노포</span>`
         : d.isModel
-        ? `<span class="popup-badge" style="background:#0a2520;color:#00ffcc;border:1px solid #0a4535;">🏅 모범음식점</span>`
+        ? `<span class="popup-badge" style="${popStyle}">🏅 모범음식점</span>`
         : d.isOld
-        ? `<span class="popup-badge" style="background:#0a1530;color:#88aaff;border:1px solid #1a2550;">⏳ ${since}년 노포</span>`
+        ? `<span class="popup-badge" style="${popStyle}">⏳ ${since}년 노포</span>`
         : '';
       const naverUrl = `https://map.naver.com/v5/search/${encodeURIComponent(d.name + ' ' + d.address)}`;
       const kakaoUrl = `https://map.kakao.com/?q=${encodeURIComponent(d.name)}`;
-      const m = L.marker([d.lat, d.lng], { icon: makeRestaurantIcon(d, rank) });
+      const m = L.marker([d.lat, d.lng], { icon: makeRestaurantIcon(d) });
       m.bindPopup(`
         <div style="min-width:190px">
           <div class="popup-name">${d.name}</div>
@@ -10117,7 +10209,7 @@
       markers[d.id] = m;
     });
     if (filteredData.length > 0) {
-      if (currentStation !== '전체') {
+      if (currentStation && currentStation !== '전체') {
         const s = STATIONS[currentStation];
         map.setView([s.lat, s.lng], 14);
       } else {
@@ -10138,13 +10230,16 @@
       const rank = idx + 1;
       const dist = distToNearest(d).toFixed(1);
       const since = 2025 - d.since;
+      const age = 2025 - d.since;
+      const op = age >= 30 ? 1 : age >= 20 ? 0.78 : age >= 10 ? 0.52 : 0.28;
+      const ageBadgeStyle = `background:rgba(136,85,255,${(op*0.3).toFixed(2)});color:rgba(200,160,255,${op.toFixed(2)});border:1px solid rgba(136,85,255,${(op*0.6).toFixed(2)});`;
       const both = d.isModel && d.isOld;
       const badgeEl = both
-        ? `<span class="badge badge-both">⭐ 모범+노포</span>`
+        ? `<span class="badge" style="${ageBadgeStyle}">⭐ 모범+노포</span>`
         : d.isModel
-        ? `<span class="badge badge-model">🏅 모범</span>`
+        ? `<span class="badge" style="${ageBadgeStyle}">🏅 모범</span>`
         : d.isOld
-        ? `<span class="badge badge-old">⏳ ${since}년</span>`
+        ? `<span class="badge" style="${ageBadgeStyle}">⏳ ${since}년</span>`
         : '';
       const naverUrl = `https://map.naver.com/v5/search/${encodeURIComponent(d.name + ' ' + d.address)}`;
       const kakaoUrl = `https://map.kakao.com/?q=${encodeURIComponent(d.name)}`;
