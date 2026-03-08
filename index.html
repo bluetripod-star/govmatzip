@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>공금맛집 — 공무원이 가장 많이 간 식당</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <style>
+    :root {
+      --ink:       #2b1a0e;
+      --paper:     #fdf8ed;
+      --accent:    #e8621a;
+      --accent2:   #f0a500;
+      --accent3:   #f7c948;
+      --muted:     #a08c6e;
+      --card-bg:   #fffdf5;
+      --border:    #ecdfc5;
+      --header-bg: #fff8e6;
+      --ctrl-bg:   #fef3d0;
+      --sidebar-h: #fff4d4;
+      --sort-bg:   #fef6e0;
+      --hover:     #fff9e8;
+      --hi:        #fff3cc;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body { height: 100%; }
+
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── HEADER ── */
+    header {
+      background: var(--header-bg);
+      padding: 13px 28px;
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      border-bottom: 3px solid var(--accent2);
+      box-shadow: 0 2px 8px rgba(240,165,0,0.1);
+      flex-shrink: 0;
+    }
+    header h1 {
+      font-family: 'Black Han Sans', sans-serif;
+      font-size: 1.7rem;
+      color: var(--accent);
+      letter-spacing: -1px;
+    }
+    header p {
+      color: var(--muted);
+      font-size: 0.79rem;
+      font-weight: 300;
+    }
+
+    /* ── FILTER BAR ── */
+    .filter-bar {
+      background: var(--ctrl-bg);
+      padding: 9px 28px;
+      display: flex;
+      gap: 18px;
+      align-items: center;
+      flex-wrap: wrap;
+      border-bottom: 1.5px solid var(--border);
+      flex-shrink: 0;
+    }
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .filter-bar label {
+      color: var(--muted);
+      font-size: 0.75rem;
+      white-space: nowrap;
+    }
+    .filter-bar select {
+      background: #fffdf5;
+      border: 1.5px solid var(--border);
+      color: var(--ink);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-family: 'Noto Sans KR', sans-serif;
+      font-size: 0.79rem;
+      cursor: pointer;
+    }
+    .filter-bar select:focus { outline: 2px solid var(--accent2); }
+
+    .search-input {
+      margin-left: auto;
+      padding: 4px 11px;
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      background: #fffdf5;
+      font-family: 'Noto Sans KR', sans-serif;
+      font-size: 0.79rem;
+      color: var(--ink);
+      width: 190px;
+    }
+    .search-input:focus { outline: 2px solid var(--accent2); }
+
+    /* ── MAIN (map + sidebar) ── */
+    .main {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      flex: 1;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    /* ── MAP ── */
+    #map {
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      background: var(--card-bg);
+      border-left: 2px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    /* stats */
+    .sidebar-stats {
+      background: var(--sidebar-h);
+      border-bottom: 1.5px solid var(--border);
+      padding: 11px 18px;
+      display: flex;
+      gap: 18px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .stat { display: flex; align-items: baseline; gap: 4px; }
+    .stat-num {
+      font-family: 'Black Han Sans', sans-serif;
+      font-size: 1.2rem;
+      color: var(--accent);
+    }
+    .stat-label { font-size: 0.69rem; color: var(--muted); }
+    .stat-divider { width: 1px; height: 18px; background: var(--border); }
+
+    /* sort bar */
+    .sort-bar {
+      background: var(--sort-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 7px 14px;
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .sort-btn {
+      padding: 3px 11px;
+      border: 1.5px solid var(--border);
+      background: white;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-family: 'Noto Sans KR', sans-serif;
+      cursor: pointer;
+      color: var(--muted);
+      transition: all 0.14s;
+    }
+    .sort-btn.active { background: var(--accent); border-color: var(--accent); color: white; font-weight: 700; }
+    .sort-btn:hover:not(.active) { background: var(--accent3); border-color: var(--accent3); color: var(--ink); }
+
+    /* list */
+    .restaurant-list {
+      overflow-y: auto;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .restaurant-card {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.13s;
+      background: var(--card-bg);
+      position: relative;
+    }
+    .restaurant-card:hover { background: var(--hover); }
+    .restaurant-card.highlighted { background: var(--hi); border-left: 3px solid var(--accent2); }
+
+    .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; }
+    .card-name { font-weight: 700; font-size: 0.91rem; color: var(--ink); padding-right: 26px; }
+    .card-amount {
+      font-family: 'Black Han Sans', sans-serif;
+      font-size: 0.94rem;
+      color: var(--accent);
+      white-space: nowrap;
+    }
+    .card-tags { margin-top: 5px; display: flex; gap: 5px; flex-wrap: wrap; }
+    .tag {
+      font-size: 0.65rem;
+      padding: 2px 7px;
+      border-radius: 12px;
+      font-weight: 500;
+    }
+    .tag-region   { background: #f0e6c8; color: #5a3e10; }
+    .tag-category { background: #fde8b0; color: #7a4a08; }
+    .card-address { font-size: 0.69rem; color: var(--muted); margin-top: 4px; }
+    .card-count   { font-size: 0.69rem; color: var(--muted); margin-top: 2px; }
+
+    .rank-badge {
+      position: absolute;
+      top: 11px; right: 13px;
+      width: 21px; height: 21px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.62rem; font-weight: 700; color: white;
+    }
+    .rank-1 { background: #d4a017; }
+    .rank-2 { background: #9e9e9e; }
+    .rank-3 { background: #b87040; }
+
+    /* popup */
+    .leaflet-popup-content-wrapper {
+      border-radius: 8px;
+      border: 2px solid var(--accent2);
+      background: var(--paper);
+      font-family: 'Noto Sans KR', sans-serif;
+    }
+    .popup-name   { font-weight: 700; font-size: 0.96rem; color: var(--ink); }
+    .popup-amount { color: var(--accent); font-family: 'Black Han Sans', sans-serif; font-size: 1.05rem; margin: 3px 0; }
+    .popup-detail { font-size: 0.75rem; color: var(--muted); }
+
+    .empty-state {
+      padding: 44px 20px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+      line-height: 1.9;
+    }
+    .empty-state .icon { font-size: 2.2rem; margin-bottom: 10px; }
+
+    @media (max-width: 680px) {
+      .main { grid-template-columns: 1fr; grid-template-rows: 50vh 1fr; }
+      .sidebar { border-left: none; border-top: 2px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🍖 공금맛집</h1>
+  <p>공무원이 가장 많이 간 식당 = 공인된 찐맛집</p>
+</header>
+
+<div class="filter-bar">
+  <div class="filter-group">
+    <label>지역</label>
+    <select id="regionFilter"><option value="">전체</option></select>
+  </div>
+  <div class="filter-group">
+    <label>업종</label>
+    <select id="categoryFilter"><option value="">전체</option></select>
+  </div>
+  <input class="search-input" type="text" id="searchInput" placeholder="🔍 가게명 검색...">
+</div>
+
+<div class="main">
+  <div id="map"></div>
+  <div class="sidebar">
+
+    <div class="sidebar-stats">
+      <div class="stat">
+        <span class="stat-num" id="totalCount">0</span>
+        <span class="stat-label">개 가게</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat">
+        <span class="stat-num" id="totalAmount">0</span>
+        <span class="stat-label">만원</span>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat">
+        <span class="stat-label">최다&nbsp;</span>
+        <span class="stat-num" id="topRegion" style="font-size:0.95rem;">-</span>
+      </div>
+    </div>
+
+    <div class="sort-bar">
+      <button class="sort-btn active" data-sort="amount">💰 금액순</button>
+      <button class="sort-btn" data-sort="count">📊 건수순</button>
+      <button class="sort-btn" data-sort="name">가나다순</button>
+    </div>
+
+    <div class="restaurant-list" id="restaurantList">
+      <div class="empty-state"><div class="icon">🍽</div>데이터 로딩 중...</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  let allData = [], filteredData = [], currentSort = 'amount', markers = {}, selectedId = null;
+
+  const map = L.map('map').setView([37.5665, 126.9780], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
+
+  function makeIcon(rank) {
+    const colors = ['#d4a017','#9e9e9e','#b87040'];
+    const bg   = rank <= 3 ? colors[rank - 1] : '#e8621a';
+    const size = rank === 1 ? 36 : rank <= 3 ? 30 : 26;
+    return L.divIcon({
+      className: '',
+      html: `<div style="width:${size}px;height:${size}px;background:${bg};border:2.5px solid white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 6px rgba(0,0,0,0.22);display:flex;align-items:center;justify-content:center;"><div style="transform:rotate(45deg);color:white;font-size:${rank<=3?'0.68':'0.58'}rem;">${rank<=3?'🏅':'🍽'}</div></div>`,
+      iconSize: [size, size], iconAnchor: [size/2, size], popupAnchor: [0, -size]
+    });
+  }
+
+  function loadData(data) {
+    allData = data.map((row, i) => ({
+      id:       i,
+      region:   row['지역']?.trim()      || '',
+      name:     row['가게명']?.trim()    || '',
+      category: row['업종']?.trim()      || '',
+      address:  row['주소']?.trim()      || '',
+      amount:   parseInt((row['총사용금액'] || '0').replace(/,/g, '')) || 0,
+      count:    parseInt((row['사용건수']   || '0').replace(/,/g, '')) || 0,
+      lat:      parseFloat(row['위도'])  || 0,
+      lng:      parseFloat(row['경도'])  || 0,
+    })).filter(d => d.name && d.lat && d.lng);
+    populateFilters();
+    applyFilters();
+  }
+
+  function populateFilters() {
+    const regions = [...new Set(allData.map(d => d.region))].sort();
+    const cats    = [...new Set(allData.map(d => d.category.split('/')[0]))].sort();
+    document.getElementById('regionFilter').innerHTML =
+      '<option value="">전체</option>' + regions.map(r => `<option>${r}</option>`).join('');
+    document.getElementById('categoryFilter').innerHTML =
+      '<option value="">전체</option>' + cats.map(c => `<option>${c}</option>`).join('');
+  }
+
+  function applyFilters() {
+    const region = document.getElementById('regionFilter').value;
+    const cat    = document.getElementById('categoryFilter').value;
+    const q      = document.getElementById('searchInput').value.trim().toLowerCase();
+    filteredData = allData.filter(d =>
+      (!region || d.region === region) &&
+      (!cat    || d.category.startsWith(cat)) &&
+      (!q      || d.name.toLowerCase().includes(q) || d.address.toLowerCase().includes(q))
+    );
+    sortData();
+    renderMarkers();
+    renderList();
+    updateStats();
+  }
+
+  function sortData() {
+    filteredData.sort((a, b) => {
+      if (currentSort === 'amount') return b.amount - a.amount;
+      if (currentSort === 'count')  return b.count  - a.count;
+      return a.name.localeCompare(b.name, 'ko');
+    });
+  }
+
+  function renderMarkers() {
+    Object.values(markers).forEach(m => map.removeLayer(m));
+    markers = {};
+    filteredData.forEach((d, idx) => {
+      const rank = idx + 1;
+      const m = L.marker([d.lat, d.lng], { icon: makeIcon(rank) });
+      m.bindPopup(`
+        <div style="min-width:170px">
+          <div class="popup-name">${d.name}</div>
+          <div class="popup-amount">${(d.amount / 10000).toFixed(0)}만원</div>
+          <div class="popup-detail">📍 ${d.region} · ${d.category}</div>
+          <div class="popup-detail">🏢 ${d.address}</div>
+          <div class="popup-detail">📋 ${d.count}건 방문</div>
+        </div>`);
+      m.on('click', () => highlightCard(d.id));
+      m.addTo(map);
+      markers[d.id] = m;
+    });
+    if (filteredData.length > 0)
+      map.fitBounds(filteredData.map(d => [d.lat, d.lng]), { padding: [36, 36] });
+  }
+
+  function renderList() {
+    const list = document.getElementById('restaurantList');
+    if (!filteredData.length) {
+      list.innerHTML = '<div class="empty-state"><div class="icon">🔍</div>검색 결과가 없습니다</div>';
+      return;
+    }
+    list.innerHTML = filteredData.map((d, idx) => {
+      const rank  = idx + 1;
+      const badge = rank <= 3 ? `<div class="rank-badge rank-${rank}">${rank}</div>` : '';
+      return `
+        <div class="restaurant-card ${selectedId === d.id ? 'highlighted' : ''}" id="card-${d.id}" onclick="selectCard(${d.id})">
+          ${badge}
+          <div class="card-top">
+            <div class="card-name">${d.name}</div>
+            <div class="card-amount">${(d.amount / 10000).toFixed(0)}만원</div>
+          </div>
+          <div class="card-tags">
+            <span class="tag tag-region">${d.region}</span>
+            <span class="tag tag-category">${d.category}</span>
+          </div>
+          <div class="card-address">📍 ${d.address}</div>
+          <div class="card-count">총 ${d.count}건 방문</div>
+        </div>`;
+    }).join('');
+  }
+
+  function updateStats() {
+    const total = filteredData.reduce((s, d) => s + d.amount, 0);
+    const rc = {};
+    filteredData.forEach(d => { rc[d.region] = (rc[d.region] || 0) + d.amount; });
+    const top = Object.entries(rc).sort((a, b) => b[1] - a[1])[0]?.[0] || '-';
+    document.getElementById('totalCount').textContent  = filteredData.length;
+    document.getElementById('totalAmount').textContent = (total / 10000).toFixed(0);
+    document.getElementById('topRegion').textContent   = top;
+  }
+
+  function selectCard(id) {
+    selectedId = id;
+    const d = filteredData.find(x => x.id === id);
+    if (d) { map.setView([d.lat, d.lng], 15); markers[id]?.openPopup(); }
+    renderList();
+    document.getElementById(`card-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function highlightCard(id) {
+    selectedId = id;
+    renderList();
+    document.getElementById(`card-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  document.getElementById('regionFilter').addEventListener('change', applyFilters);
+  document.getElementById('categoryFilter').addEventListener('change', applyFilters);
+  document.getElementById('searchInput').addEventListener('input', applyFilters);
+  document.querySelectorAll('.sort-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentSort = btn.dataset.sort;
+      sortData();
+      renderList();
+    });
+  });
+
+  /* ── 샘플 데이터 자동 로드 ── */
+  const sampleCSV = `지역,가게명,업종,주소,총사용금액,사용건수,위도,경도
+강남구,삼원가든,한식/갈비,서울 강남구 학동로 625,4820000,23,37.5219,127.0411
+강남구,봉피양,한식/냉면,서울 강남구 영동대로 418,3150000,18,37.5091,127.0612
+강남구,스시야,일식/초밥,서울 강남구 도산대로 318,2980000,12,37.5264,127.0388
+마포구,연남동돈까스,일식/돈까스,서울 마포구 연남로 68,1870000,31,37.5641,126.9267
+마포구,망원시장국밥,한식/국밥,서울 마포구 포은로 109,980000,42,37.5554,126.9049
+마포구,이탈리아노,양식/이탈리안,서울 마포구 월드컵북로 116,2340000,19,37.5594,126.9081
+서초구,우래옥,한식/냉면,서울 서초구 강남대로 577,3680000,21,37.4851,127.0322
+서초구,투뿔등심,한식/소고기,서울 서초구 서초대로 396,5120000,16,37.4933,127.0276
+송파구,올림픽장어구이,한식/장어,서울 송파구 오금로 19,1560000,28,37.5024,127.1230
+송파구,가락시장회센터,한식/해산물,서울 송파구 가락로 99,2100000,35,37.4936,127.1163
+종로구,청진옥,한식/해장국,서울 종로구 종로 10,1240000,55,37.5706,126.9815
+종로구,삼청동수제비,한식/수제비,서울 종로구 삼청로 99,870000,48,37.5816,126.9807`;
+
+  loadData(Papa.parse(sampleCSV, { header: true, skipEmptyLines: true }).data);
+</script>
+</body>
+</html>
